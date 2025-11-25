@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -18,6 +19,8 @@ public class DeckManager : MonoBehaviour
     public IReadOnlyList<CardInstance> ExhaustPile => exhaustPile;
     public IEnumerable<CardData> StarterDeck => starterDeck;
 
+    public event Action<IReadOnlyList<CardInstance>> HandChanged;
+
     public void InitializeDeck(IEnumerable<CardData> deckList)
     {
         drawPile.Clear();
@@ -31,6 +34,8 @@ public class DeckManager : MonoBehaviour
         }
 
         Shuffle(drawPile);
+
+        NotifyHandChanged();
     }
 
     public void DrawStartingHand()
@@ -59,12 +64,20 @@ public class DeckManager : MonoBehaviour
             drawnCards.Add(card);
         }
 
+        NotifyHandChanged();
+
         return drawnCards;
     }
 
     public bool RemoveFromHand(CardInstance card)
     {
-        return hand.Remove(card);
+        var removed = hand.Remove(card);
+        if (removed)
+        {
+            NotifyHandChanged();
+        }
+
+        return removed;
     }
 
     public void ReturnCardToHand(CardInstance card)
@@ -72,6 +85,7 @@ public class DeckManager : MonoBehaviour
         if (!hand.Contains(card))
         {
             hand.Add(card);
+            NotifyHandChanged();
         }
     }
 
@@ -94,6 +108,8 @@ public class DeckManager : MonoBehaviour
         }
 
         hand.Clear();
+
+        NotifyHandChanged();
     }
 
     public void Shuffle(IList<CardInstance> pile)
@@ -120,5 +136,10 @@ public class DeckManager : MonoBehaviour
 
         discardPile.Clear();
         Shuffle(drawPile);
+    }
+
+    private void NotifyHandChanged()
+    {
+        HandChanged?.Invoke(hand);
     }
 }

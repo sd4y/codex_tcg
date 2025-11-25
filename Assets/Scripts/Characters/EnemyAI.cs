@@ -1,16 +1,138 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
+
+public enum EnemyIntentType
+{
+    Attack,
+    Defend,
+    Buff,
+    Debuff,
+    Unknown
+}
+
+[Serializable]
+public class EnemyMove
+{
+    [SerializeField] private string moveId = "attack";
+    [SerializeField] private EnemyIntentType intent = EnemyIntentType.Attack;
+    [SerializeField] private string description = "";
+    [SerializeField] private int power = 5;
+    [SerializeField] private CardTarget target = CardTarget.SingleEnemy;
+    [SerializeField] private List<CardEffect> effects = new();
+    [SerializeField] private string statusId = string.Empty;
+    [SerializeField] private int statusStacks = 0;
+    [SerializeField] private int statusDuration = 1;
+    [SerializeField] private Sprite icon;
+
+    public string MoveId => moveId;
+    public EnemyIntentType Intent => intent;
+    public string Description => string.IsNullOrEmpty(description) ? intent.ToString() : description;
+    public int Power => power;
+    public CardTarget Target => target;
+    public IReadOnlyList<CardEffect> Effects => effects;
+    public string StatusId => statusId;
+    public int StatusStacks => statusStacks;
+    public int StatusDuration => statusDuration;
+    public Sprite Icon => icon;
+}
 
 public class EnemyAI : MonoBehaviour
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    [SerializeField] private List<EnemyMove> possibleMoves = new();
+    [SerializeField] private bool chooseSequentially = false;
+
+    private int moveIndex = 0;
+
+    public EnemyMove NextMove { get; private set; }
+
+    public void DetermineNextMove()
     {
-        
+        if (possibleMoves.Count == 0)
+        {
+            NextMove = null;
+            return;
+        }
+
+        if (chooseSequentially)
+        {
+            NextMove = possibleMoves[moveIndex % possibleMoves.Count];
+            moveIndex++;
+        }
+        else
+        {
+            NextMove = possibleMoves[UnityEngine.Random.Range(0, possibleMoves.Count)];
+        }
     }
 
-    // Update is called once per frame
-    void Update()
+    public void ExecuteMove(CharacterCombatant self, CharacterCombatant player, IEnumerable<EnemyCharacter> allEnemies,
+        DeckManager deckManager, TurnManager turnManager)
     {
-        
+        if (NextMove == null)
+        {
+            DetermineNextMove();
+        }
+
+        if (NextMove == null)
+        {
+            return;
+        }
+
+        var target = GetTargetForMove(NextMove, player, allEnemies);
+        if (NextMove.Effects == null || NextMove.Effects.Count == 0)
+        {
+            ExecuteFallback(NextMove, self, target, allEnemies, turnManager);
+        }
+        else
+        {
+            foreach (var effect in NextMove.Effects)
+            {
+                effect.Apply(self, target, allEnemies, deckManager, turnManager);
+            }
+        }
+
+        DetermineNextMove();
+    }
+
+    private CharacterCombatant GetTargetForMove(EnemyMove move, CharacterCombatant player, IEnumerable<EnemyCharacter> enemies)
+    {
+        switch (move.Target)
+        {
+            case CardTarget.Self:
+                return GetComponent<CharacterCombatant>();
+            case CardTarget.AllEnemies:
+            case CardTarget.SingleEnemy:
+            case CardTarget.RandomEnemy:
+                return player;
+            default:
+                return player;
+        }
+    }
+
+    private void ExecuteFallback(EnemyMove move, CharacterCombatant self, CharacterCombatant target,
+        IEnumerable<EnemyCharacter> enemies, TurnManager turnManager)
+    {
+        switch (move.Intent)
+        {
+            case EnemyIntentType.Attack:
+                if (target != null)
+                {
+                    var damage = CombatMath.CalculateDamage(self, target, move.Power);
+                    target.ApplyDamage(damage);
+                }
+
+                break;
+            case EnemyIntentType.Defend:
+                self?.GainBlock(move.Power);
+                break;
+            case EnemyIntentType.Buff:
+                self?.ApplyStatus(move.StatusId, move.StatusStacks, move.StatusDuration);
+                break;
+            case EnemyIntentType.Debuff:
+                target?.ApplyStatus(move.StatusId, move.StatusStacks, move.StatusDuration);
+                break;
+            default:
+                break;
+        }
     }
 }

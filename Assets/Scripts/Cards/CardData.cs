@@ -15,6 +15,7 @@ public enum CardTarget
     Self,
     SingleEnemy,
     AllEnemies,
+    RandomEnemy,
     None
 }
 
@@ -37,6 +38,7 @@ public class CardData : ScriptableObject
     [SerializeField] private CardTarget target = CardTarget.SingleEnemy;
     [SerializeField] private CardRarity rarity = CardRarity.Common;
     [SerializeField] private bool exhaustAfterPlay = false;
+    [SerializeField] private Sprite artwork = null;
     [SerializeField] private List<CardEffect> effects = new();
 
     public string CardId => cardId;
@@ -47,6 +49,7 @@ public class CardData : ScriptableObject
     public CardTarget Target => target;
     public CardRarity Rarity => rarity;
     public bool ExhaustAfterPlay => exhaustAfterPlay;
+    public Sprite Artwork => artwork;
     public IReadOnlyList<CardEffect> Effects => effects;
 
     public CardInstance CreateInstance()

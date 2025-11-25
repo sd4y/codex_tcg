@@ -36,12 +36,14 @@ public class CardEffect
                 {
                     foreach (var enemy in enemies)
                     {
-                        enemy.ApplyDamage(value);
+                        var damage = CombatMath.CalculateDamage(source, enemy, value);
+                        enemy.ApplyDamage(damage);
                     }
                 }
                 else
                 {
-                    primaryTarget.ApplyDamage(value);
+                    var damage = CombatMath.CalculateDamage(source, primaryTarget, value);
+                    primaryTarget.ApplyDamage(damage);
                 }
                 break;
             case CardEffectType.Block:
