@@ -14,6 +14,8 @@ public class BattleManager : MonoBehaviour
     [SerializeField] private CombatantStatusView playerStatusView;
     [SerializeField] private List<CombatantStatusView> enemyStatusViews = new();
     [SerializeField] private List<EnemyIntentView> enemyIntentViews = new();
+    [SerializeField] private GameObject victoryPanel;
+    [SerializeField] private GameObject defeatPanel;
 
     private CardInstance pendingTargetedCard;
     private bool awaitingTarget;
@@ -25,6 +27,8 @@ public class BattleManager : MonoBehaviour
 
     public void BeginBattle()
     {
+        HideResultPanels();
+
         if (player != null)
         {
             player.ResetForBattle();
@@ -107,6 +111,11 @@ public class BattleManager : MonoBehaviour
 
         ResolveCard(card, target);
 
+        if (CheckBattleEnd())
+        {
+            return;
+        }
+
         if (card.Data.ExhaustAfterPlay)
         {
             deckManager.Exhaust(card);
@@ -154,11 +163,21 @@ public class BattleManager : MonoBehaviour
         player.TickStatuses(StatusTickPhase.EndOfTurn);
         deckManager.ResetHandsBetweenTurns();
 
+        if (CheckBattleEnd())
+        {
+            return;
+        }
+
         StartEnemyTurn();
     }
 
     private void StartEnemyTurn()
     {
+        if (CheckBattleEnd())
+        {
+            return;
+        }
+
         turnManager.StartEnemyTurn();
 
         foreach (var enemy in enemies)
@@ -174,13 +193,26 @@ public class BattleManager : MonoBehaviour
             ai?.DetermineNextMove();
             RefreshIntentForEnemy(enemy);
             enemy.TickStatuses(StatusTickPhase.EndOfTurn);
+
+            if (CheckBattleEnd())
+            {
+                break;
+            }
         }
 
-        StartPlayerTurn();
+        if (!CheckBattleEnd())
+        {
+            StartPlayerTurn();
+        }
     }
 
     private void StartPlayerTurn()
     {
+        if (CheckBattleEnd())
+        {
+            return;
+        }
+
         turnManager.StartPlayerTurn(deckManager);
         player.TickStatuses(StatusTickPhase.StartOfTurn);
         handView?.SetTarget(GetDefaultTarget());
@@ -294,5 +326,41 @@ public class BattleManager : MonoBehaviour
         }
 
         PlayCard(pendingTargetedCard, combatant);
+    }
+
+    private bool CheckBattleEnd()
+    {
+        if (turnManager.CurrentPhase == BattlePhase.Victory || turnManager.CurrentPhase == BattlePhase.Defeat)
+        {
+            return true;
+        }
+
+        if (player != null && player.CurrentHealth <= 0)
+        {
+            EndBattle(BattlePhase.Defeat);
+            return true;
+        }
+
+        if (enemies.All(enemy => enemy.CurrentHealth <= 0))
+        {
+            EndBattle(BattlePhase.Victory);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void EndBattle(BattlePhase result)
+    {
+        ClearTargeting();
+        turnManager.SetBattleResult(result);
+        victoryPanel?.SetActive(result == BattlePhase.Victory);
+        defeatPanel?.SetActive(result == BattlePhase.Defeat);
+    }
+
+    private void HideResultPanels()
+    {
+        victoryPanel?.SetActive(false);
+        defeatPanel?.SetActive(false);
     }
 }

@@ -13,14 +13,15 @@ public class CharacterCombatant : MonoBehaviour
     [SerializeField] private string combatantId = "character";
     [SerializeField] private int maxHealth = 80;
     [SerializeField] private int startingBlock = 0;
+    [SerializeField] private StatusLibrary statusLibrary;
 
-    private readonly Dictionary<string, StatusEffect> statuses = new();
+    private readonly Dictionary<string, StatusInstance> statuses = new();
 
     public string CombatantId => combatantId;
     public int MaxHealth => maxHealth;
     public int CurrentHealth { get; private set; }
     public int Block { get; private set; }
-    public IReadOnlyDictionary<string, StatusEffect> Statuses => statuses;
+    public IReadOnlyDictionary<string, StatusInstance> Statuses => statuses;
 
     public event Action<CharacterCombatant> StatsChanged;
 
@@ -57,15 +58,25 @@ public class CharacterCombatant : MonoBehaviour
 
     public void ApplyStatus(string statusId, int stackCount, int duration)
     {
+        var definition = ResolveStatusDefinition(statusId);
+
         if (statuses.TryGetValue(statusId, out var currentStatus))
         {
             currentStatus.Stacks += stackCount;
+            currentStatus.Stacks = Mathf.Max(0, currentStatus.Stacks);
             currentStatus.Duration = Mathf.Max(currentStatus.Duration, duration);
             statuses[statusId] = currentStatus;
         }
         else
         {
-            statuses[statusId] = new StatusEffect(statusId, stackCount, duration);
+            statuses[statusId] = new StatusInstance(definition, Mathf.Max(0, stackCount), Mathf.Max(0, duration));
+        }
+
+        if (definition.RemoveWhenStacksDepleted && statuses.TryGetValue(statusId, out var checkStatus) && checkStatus.Stacks <= 0)
+        {
+            statuses.Remove(statusId);
+            NotifyStatsChanged();
+            return;
         }
 
         NotifyStatsChanged();
@@ -81,7 +92,13 @@ public class CharacterCombatant : MonoBehaviour
 
     public bool HasStatus(string statusId)
     {
-        return statuses.TryGetValue(statusId, out var status) && status.Stacks > 0 && status.Duration != 0;
+        if (!statuses.TryGetValue(statusId, out var status) || status.Stacks <= 0)
+        {
+            return false;
+        }
+
+        var definition = status.Definition ?? ResolveStatusDefinition(statusId);
+        return !definition.ReduceDuration || status.Duration != 0;
     }
 
     public int GetStatusStacks(string statusId)
@@ -93,18 +110,32 @@ public class CharacterCombatant : MonoBehaviour
     {
         var expired = new List<string>();
         var changed = false;
-        foreach (var kvp in statuses)
+
+        foreach (var kvp in new List<KeyValuePair<string, StatusInstance>>(statuses))
         {
             var status = kvp.Value;
-            if (status.Duration > 0)
+            var definition = status.Definition ?? ResolveStatusDefinition(kvp.Key);
+
+            if (definition.ShouldTick(phase) && status.Stacks > 0)
+            {
+                ApplyStatusTick(definition, status);
+                changed = true;
+            }
+
+            if (status.Duration > 0 && definition.ShouldDecrementDuration(phase))
             {
                 status.Duration -= 1;
-                statuses[kvp.Key] = status;
                 changed = true;
-                if (status.Duration <= 0)
-                {
-                    expired.Add(kvp.Key);
-                }
+            }
+
+            if ((definition.RemoveWhenStacksDepleted && status.Stacks <= 0) ||
+                (status.Duration <= 0 && definition.ReduceDuration))
+            {
+                expired.Add(kvp.Key);
+            }
+            else
+            {
+                statuses[kvp.Key] = status;
             }
         }
 
@@ -123,18 +154,53 @@ public class CharacterCombatant : MonoBehaviour
     {
         StatsChanged?.Invoke(this);
     }
+
+    private void ApplyStatusTick(StatusDefinition definition, StatusInstance instance)
+    {
+        switch (definition.TickEffect)
+        {
+            case StatusTickEffectType.DamagePerStack:
+                ApplyUnblockedDamage(definition.TickValuePerStack * instance.Stacks);
+                break;
+        }
+    }
+
+    private void ApplyUnblockedDamage(int amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        CurrentHealth = Mathf.Max(0, CurrentHealth - amount);
+        NotifyStatsChanged();
+    }
+
+    private StatusDefinition ResolveStatusDefinition(string statusId)
+    {
+        if (statusLibrary != null)
+        {
+            var definition = statusLibrary.GetDefinition(statusId);
+            if (definition != null)
+            {
+                return definition;
+            }
+        }
+
+        return StatusDefinition.CreateDefault(statusId);
+    }
 }
 
-public struct StatusEffect
+public struct StatusInstance
 {
-    public StatusEffect(string id, int stacks, int duration)
+    public StatusInstance(StatusDefinition definition, int stacks, int duration)
     {
-        Id = id;
+        Definition = definition;
         Stacks = stacks;
         Duration = duration;
     }
 
-    public string Id { get; }
+    public StatusDefinition Definition { get; }
     public int Stacks { get; set; }
     public int Duration { get; set; }
 }

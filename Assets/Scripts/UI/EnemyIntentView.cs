@@ -29,9 +29,7 @@ public class EnemyIntentView : MonoBehaviour
             return;
         }
 
-        var description = string.IsNullOrEmpty(move.Description)
-            ? move.Intent.ToString()
-            : move.Description;
+        var description = BuildDescription(move);
 
         if (intentText != null)
         {
@@ -55,6 +53,32 @@ public class EnemyIntentView : MonoBehaviour
         if (intentIcon != null)
         {
             intentIcon.enabled = false;
+        }
+    }
+
+    private string BuildDescription(EnemyMove move)
+    {
+        if (!string.IsNullOrEmpty(move.Description))
+        {
+            return move.Description;
+        }
+
+        switch (move.Intent)
+        {
+            case EnemyIntentType.Attack:
+                return $"Attack {move.Power}";
+            case EnemyIntentType.Defend:
+                return $"Block {move.Power}";
+            case EnemyIntentType.Buff:
+                return string.IsNullOrEmpty(move.StatusId)
+                    ? "Buff"
+                    : $"Buff {move.StatusId} {move.StatusStacks}";
+            case EnemyIntentType.Debuff:
+                return string.IsNullOrEmpty(move.StatusId)
+                    ? "Debuff"
+                    : $"Debuff {move.StatusId} {move.StatusStacks}";
+            default:
+                return move.Intent.ToString();
         }
     }
 }

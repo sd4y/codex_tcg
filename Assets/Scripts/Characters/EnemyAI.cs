@@ -20,6 +20,9 @@ public class EnemyMove
     [SerializeField] private int power = 5;
     [SerializeField] private CardTarget target = CardTarget.SingleEnemy;
     [SerializeField] private List<CardEffect> effects = new();
+    [SerializeField] private string statusId = string.Empty;
+    [SerializeField] private int statusStacks = 0;
+    [SerializeField] private int statusDuration = 1;
     [SerializeField] private Sprite icon;
 
     public string MoveId => moveId;
@@ -28,6 +31,9 @@ public class EnemyMove
     public int Power => power;
     public CardTarget Target => target;
     public IReadOnlyList<CardEffect> Effects => effects;
+    public string StatusId => statusId;
+    public int StatusStacks => statusStacks;
+    public int StatusDuration => statusDuration;
     public Sprite Icon => icon;
 }
 
@@ -73,9 +79,16 @@ public class EnemyAI : MonoBehaviour
         }
 
         var target = GetTargetForMove(NextMove, player, allEnemies);
-        foreach (var effect in NextMove.Effects)
+        if (NextMove.Effects == null || NextMove.Effects.Count == 0)
         {
-            effect.Apply(self, target, allEnemies, deckManager, turnManager);
+            ExecuteFallback(NextMove, self, target, allEnemies, turnManager);
+        }
+        else
+        {
+            foreach (var effect in NextMove.Effects)
+            {
+                effect.Apply(self, target, allEnemies, deckManager, turnManager);
+            }
         }
 
         DetermineNextMove();
@@ -93,6 +106,33 @@ public class EnemyAI : MonoBehaviour
                 return player;
             default:
                 return player;
+        }
+    }
+
+    private void ExecuteFallback(EnemyMove move, CharacterCombatant self, CharacterCombatant target,
+        IEnumerable<EnemyCharacter> enemies, TurnManager turnManager)
+    {
+        switch (move.Intent)
+        {
+            case EnemyIntentType.Attack:
+                if (target != null)
+                {
+                    var damage = CombatMath.CalculateDamage(self, target, move.Power);
+                    target.ApplyDamage(damage);
+                }
+
+                break;
+            case EnemyIntentType.Defend:
+                self?.GainBlock(move.Power);
+                break;
+            case EnemyIntentType.Buff:
+                self?.ApplyStatus(move.StatusId, move.StatusStacks, move.StatusDuration);
+                break;
+            case EnemyIntentType.Debuff:
+                target?.ApplyStatus(move.StatusId, move.StatusStacks, move.StatusDuration);
+                break;
+            default:
+                break;
         }
     }
 }

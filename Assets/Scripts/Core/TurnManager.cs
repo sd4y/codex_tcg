@@ -35,6 +35,12 @@ public class TurnManager : MonoBehaviour
         CurrentPhase = BattlePhase.EnemyTurn;
     }
 
+    public void SetBattleResult(BattlePhase result)
+    {
+        CurrentPhase = result;
+        CurrentEnergy = 0;
+    }
+
     public bool TrySpendEnergy(int cost)
     {
         if (CurrentEnergy < cost)
