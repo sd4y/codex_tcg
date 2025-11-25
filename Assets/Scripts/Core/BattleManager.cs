@@ -13,6 +13,10 @@ public class BattleManager : MonoBehaviour
     [Header("UI")]
     [SerializeField] private CombatantStatusView playerStatusView;
     [SerializeField] private List<CombatantStatusView> enemyStatusViews = new();
+    [SerializeField] private List<EnemyIntentView> enemyIntentViews = new();
+
+    private CardInstance pendingTargetedCard;
+    private bool awaitingTarget;
 
     private void Start()
     {
@@ -30,12 +34,17 @@ public class BattleManager : MonoBehaviour
         foreach (var enemy in enemies)
         {
             enemy.ResetForBattle();
+            var ai = enemy.GetComponent<EnemyAI>();
+            ai?.DetermineNextMove();
         }
 
         BindEnemyStatusViews();
+        BindEnemyIntents();
 
         deckManager.InitializeDeck(deckManager.StarterDeck);
         turnManager.BeginBattle(deckManager);
+
+        player.TickStatuses(StatusTickPhase.StartOfTurn);
 
         handView?.Initialize(deckManager, this, GetDefaultTarget());
     }
@@ -47,14 +56,28 @@ public class BattleManager : MonoBehaviour
             return;
         }
 
-        var chosenTarget = target != null ? target : GetDefaultTarget();
-        if (chosenTarget == null)
+        switch (card.Data.Target)
         {
-            Debug.LogWarning("No valid target to play the card on.");
-            return;
+            case CardTarget.Self:
+                PlayCard(card, player);
+                break;
+            case CardTarget.AllEnemies:
+                PlayCard(card, GetDefaultTarget());
+                break;
+            case CardTarget.RandomEnemy:
+                var randomTarget = GetRandomTarget();
+                if (randomTarget != null)
+                {
+                    PlayCard(card, randomTarget);
+                }
+                break;
+            case CardTarget.SingleEnemy:
+                BeginTargetSelection(card);
+                break;
+            default:
+                PlayCard(card, target);
+                break;
         }
-
-        PlayCard(card, chosenTarget);
     }
 
     public void PlayCard(CardInstance card, CharacterCombatant target)
@@ -64,6 +87,8 @@ public class BattleManager : MonoBehaviour
             Debug.LogWarning("Tried to play a card that is not in the hand");
             return;
         }
+
+        ClearTargeting();
 
         if (!turnManager.TrySpendEnergy(card.CurrentCost))
         {
@@ -99,6 +124,10 @@ public class BattleManager : MonoBehaviour
                 case CardTarget.AllEnemies:
                     effect.Apply(player, target, enemies, deckManager, turnManager);
                     break;
+                case CardTarget.RandomEnemy:
+                    var randomEnemy = GetRandomTarget();
+                    effect.Apply(player, randomEnemy, enemies, deckManager, turnManager);
+                    break;
                 default:
                     effect.Apply(player, target, enemies, deckManager, turnManager);
                     break;
@@ -106,13 +135,93 @@ public class BattleManager : MonoBehaviour
         }
     }
 
+    public void EndPlayerTurn()
+    {
+        if (turnManager.CurrentPhase != BattlePhase.PlayerTurn)
+        {
+            return;
+        }
+
+        ClearTargeting();
+        player.TickStatuses(StatusTickPhase.EndOfTurn);
+        deckManager.ResetHandsBetweenTurns();
+
+        StartEnemyTurn();
+    }
+
+    private void StartEnemyTurn()
+    {
+        turnManager.StartEnemyTurn();
+
+        foreach (var enemy in enemies)
+        {
+            if (enemy.CurrentHealth <= 0)
+            {
+                continue;
+            }
+
+            enemy.TickStatuses(StatusTickPhase.StartOfTurn);
+            var ai = enemy.GetComponent<EnemyAI>();
+            ai?.ExecuteMove(enemy, player, enemies, deckManager, turnManager);
+            ai?.DetermineNextMove();
+            RefreshIntentForEnemy(enemy);
+            enemy.TickStatuses(StatusTickPhase.EndOfTurn);
+        }
+
+        StartPlayerTurn();
+    }
+
+    private void StartPlayerTurn()
+    {
+        turnManager.StartPlayerTurn(deckManager);
+        player.TickStatuses(StatusTickPhase.StartOfTurn);
+        handView?.SetTarget(GetDefaultTarget());
+        ClearTargeting();
+        RefreshAllIntents();
+    }
+
     private void BindEnemyStatusViews()
     {
         int count = Mathf.Min(enemyStatusViews.Count, enemies.Count);
         for (int i = 0; i < count; i++)
         {
+            enemyStatusViews[i].Clicked -= OnEnemyStatusClicked;
             enemyStatusViews[i].Bind(enemies[i]);
+            enemyStatusViews[i].Clicked += OnEnemyStatusClicked;
         }
+    }
+
+    private void BindEnemyIntents()
+    {
+        int count = Mathf.Min(enemyIntentViews.Count, enemies.Count);
+        for (int i = 0; i < count; i++)
+        {
+            var intentView = enemyIntentViews[i];
+            var ai = enemies[i].GetComponent<EnemyAI>();
+            if (ai != null)
+            {
+                intentView?.Bind(ai);
+            }
+        }
+    }
+
+    private void RefreshAllIntents()
+    {
+        foreach (var enemy in enemies)
+        {
+            RefreshIntentForEnemy(enemy);
+        }
+    }
+
+    private void RefreshIntentForEnemy(EnemyCharacter enemy)
+    {
+        int index = enemies.IndexOf(enemy);
+        if (index < 0 || index >= enemyIntentViews.Count)
+        {
+            return;
+        }
+
+        enemyIntentViews[index]?.Refresh();
     }
 
     private CharacterCombatant GetDefaultTarget()
@@ -123,5 +232,59 @@ public class BattleManager : MonoBehaviour
         }
 
         return enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
+    }
+
+    private CharacterCombatant GetRandomTarget()
+    {
+        var alive = enemies.Where(e => e.CurrentHealth > 0).ToList();
+        if (alive.Count == 0)
+        {
+            return null;
+        }
+
+        return alive[Random.Range(0, alive.Count)];
+    }
+
+    private void BeginTargetSelection(CardInstance card)
+    {
+        pendingTargetedCard = card;
+        awaitingTarget = true;
+        HighlightEnemies(true);
+    }
+
+    private void ClearTargeting()
+    {
+        awaitingTarget = false;
+        pendingTargetedCard = null;
+        HighlightEnemies(false);
+    }
+
+    private void HighlightEnemies(bool highlighted)
+    {
+        foreach (var view in enemyStatusViews)
+        {
+            if (view == null)
+            {
+                continue;
+            }
+
+            bool shouldHighlight = highlighted;
+            if (highlighted && view.BoundCombatant != null)
+            {
+                shouldHighlight = view.BoundCombatant.CurrentHealth > 0;
+            }
+
+            view.SetHighlighted(shouldHighlight);
+        }
+    }
+
+    private void OnEnemyStatusClicked(CharacterCombatant combatant)
+    {
+        if (!awaitingTarget || pendingTargetedCard == null)
+        {
+            return;
+        }
+
+        PlayCard(pendingTargetedCard, combatant);
     }
 }

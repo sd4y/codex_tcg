@@ -2,6 +2,12 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+public enum StatusTickPhase
+{
+    StartOfTurn,
+    EndOfTurn
+}
+
 public class CharacterCombatant : MonoBehaviour
 {
     [SerializeField] private string combatantId = "character";
@@ -43,7 +49,8 @@ public class CharacterCombatant : MonoBehaviour
 
     public void GainBlock(int amount)
     {
-        Block += Mathf.Max(0, amount);
+        var adjustedBlock = CombatMath.CalculateBlockGain(this, amount);
+        Block += Mathf.Max(0, adjustedBlock);
 
         NotifyStatsChanged();
     }
@@ -62,6 +69,54 @@ public class CharacterCombatant : MonoBehaviour
         }
 
         NotifyStatsChanged();
+    }
+
+    public void RemoveStatus(string statusId)
+    {
+        if (statuses.Remove(statusId))
+        {
+            NotifyStatsChanged();
+        }
+    }
+
+    public bool HasStatus(string statusId)
+    {
+        return statuses.TryGetValue(statusId, out var status) && status.Stacks > 0 && status.Duration != 0;
+    }
+
+    public int GetStatusStacks(string statusId)
+    {
+        return statuses.TryGetValue(statusId, out var status) ? status.Stacks : 0;
+    }
+
+    public void TickStatuses(StatusTickPhase phase)
+    {
+        var expired = new List<string>();
+        var changed = false;
+        foreach (var kvp in statuses)
+        {
+            var status = kvp.Value;
+            if (status.Duration > 0)
+            {
+                status.Duration -= 1;
+                statuses[kvp.Key] = status;
+                changed = true;
+                if (status.Duration <= 0)
+                {
+                    expired.Add(kvp.Key);
+                }
+            }
+        }
+
+        foreach (var statusId in expired)
+        {
+            statuses.Remove(statusId);
+        }
+
+        if (expired.Count > 0 || changed)
+        {
+            NotifyStatsChanged();
+        }
     }
 
     private void NotifyStatsChanged()

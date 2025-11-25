@@ -1,14 +1,21 @@
+using System;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class CombatantStatusView : MonoBehaviour
+public class CombatantStatusView : MonoBehaviour, IPointerClickHandler
 {
     [SerializeField] private TMP_Text healthText;
     [SerializeField] private TMP_Text blockText;
     [SerializeField] private Slider healthSlider;
+    [SerializeField] private GameObject highlight;
 
     private CharacterCombatant boundCombatant;
+
+    public event Action<CharacterCombatant> Clicked;
+
+    public CharacterCombatant BoundCombatant => boundCombatant;
 
     public void Bind(CharacterCombatant combatant)
     {
@@ -25,6 +32,7 @@ public class CombatantStatusView : MonoBehaviour
         }
 
         Refresh(boundCombatant);
+        SetHighlighted(false);
     }
 
     private void OnDisable()
@@ -56,6 +64,22 @@ public class CombatantStatusView : MonoBehaviour
         {
             healthSlider.maxValue = combatant.MaxHealth;
             healthSlider.value = combatant.CurrentHealth;
+        }
+    }
+
+    public void SetHighlighted(bool isHighlighted)
+    {
+        if (highlight != null)
+        {
+            highlight.SetActive(isHighlighted);
+        }
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (boundCombatant != null)
+        {
+            Clicked?.Invoke(boundCombatant);
         }
     }
 }

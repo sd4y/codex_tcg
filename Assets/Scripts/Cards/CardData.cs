@@ -15,6 +15,7 @@ public enum CardTarget
     Self,
     SingleEnemy,
     AllEnemies,
+    RandomEnemy,
     None
 }
 
