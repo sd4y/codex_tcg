@@ -1,16 +1,37 @@
+using System;
 using UnityEngine;
 
-public class CardInstance : MonoBehaviour
+[Serializable]
+public class CardInstance
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public CardInstance(CardData data)
     {
-        
+        Data = data;
+        ResetCost();
     }
 
-    // Update is called once per frame
-    void Update()
+    public CardData Data { get; }
+    public int CurrentCost { get; private set; }
+    public bool IsUpgraded { get; private set; }
+    public bool IsExhausted { get; private set; }
+
+    public void ResetCost()
     {
-        
+        CurrentCost = Data.Cost;
+    }
+
+    public void ModifyCost(int delta)
+    {
+        CurrentCost = Mathf.Max(0, CurrentCost + delta);
+    }
+
+    public void Upgrade()
+    {
+        IsUpgraded = true;
+    }
+
+    public void MarkExhausted()
+    {
+        IsExhausted = true;
     }
 }
