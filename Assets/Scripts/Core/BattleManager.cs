@@ -41,12 +41,12 @@ public class BattleManager : MonoBehaviour
         BindEnemyStatusViews();
         BindEnemyIntents();
 
+        handView?.Initialize(deckManager, this, GetDefaultTarget());
+
         deckManager.InitializeDeck(deckManager.StarterDeck);
         turnManager.BeginBattle(deckManager);
 
         player.TickStatuses(StatusTickPhase.StartOfTurn);
-
-        handView?.Initialize(deckManager, this, GetDefaultTarget());
     }
 
     public void OnPlayerUseCard(CardInstance card, CharacterCombatant target)
@@ -72,10 +72,18 @@ public class BattleManager : MonoBehaviour
                 }
                 break;
             case CardTarget.SingleEnemy:
-                BeginTargetSelection(card);
+                var liveEnemies = enemies.Where(e => e.CurrentHealth > 0).ToList();
+                if (liveEnemies.Count == 1)
+                {
+                    PlayCard(card, liveEnemies[0]);
+                }
+                else
+                {
+                    BeginTargetSelection(card);
+                }
                 break;
             default:
-                PlayCard(card, target);
+                PlayCard(card, target ?? GetDefaultTarget());
                 break;
         }
     }
