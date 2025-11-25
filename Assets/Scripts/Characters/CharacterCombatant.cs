@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -15,6 +16,8 @@ public class CharacterCombatant : MonoBehaviour
     public int Block { get; private set; }
     public IReadOnlyDictionary<string, StatusEffect> Statuses => statuses;
 
+    public event Action<CharacterCombatant> StatsChanged;
+
     private void Awake()
     {
         ResetForBattle();
@@ -25,6 +28,8 @@ public class CharacterCombatant : MonoBehaviour
         CurrentHealth = maxHealth;
         Block = startingBlock;
         statuses.Clear();
+
+        NotifyStatsChanged();
     }
 
     public void ApplyDamage(int amount)
@@ -32,11 +37,15 @@ public class CharacterCombatant : MonoBehaviour
         var remainingDamage = Mathf.Max(0, amount - Block);
         Block = Mathf.Max(0, Block - amount);
         CurrentHealth = Mathf.Max(0, CurrentHealth - remainingDamage);
+
+        NotifyStatsChanged();
     }
 
     public void GainBlock(int amount)
     {
         Block += Mathf.Max(0, amount);
+
+        NotifyStatsChanged();
     }
 
     public void ApplyStatus(string statusId, int stackCount, int duration)
@@ -51,6 +60,13 @@ public class CharacterCombatant : MonoBehaviour
         {
             statuses[statusId] = new StatusEffect(statusId, stackCount, duration);
         }
+
+        NotifyStatsChanged();
+    }
+
+    private void NotifyStatsChanged()
+    {
+        StatsChanged?.Invoke(this);
     }
 }
 

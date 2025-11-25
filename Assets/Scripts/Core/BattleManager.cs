@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class BattleManager : MonoBehaviour
@@ -7,6 +8,11 @@ public class BattleManager : MonoBehaviour
     [SerializeField] private List<EnemyCharacter> enemies = new();
     [SerializeField] private DeckManager deckManager;
     [SerializeField] private TurnManager turnManager;
+    [SerializeField] private HandView handView;
+    [SerializeField] private CharacterCombatant targetOverride;
+    [Header("UI")]
+    [SerializeField] private CombatantStatusView playerStatusView;
+    [SerializeField] private List<CombatantStatusView> enemyStatusViews = new();
 
     private void Start()
     {
@@ -18,6 +24,7 @@ public class BattleManager : MonoBehaviour
         if (player != null)
         {
             player.ResetForBattle();
+            playerStatusView?.Bind(player);
         }
 
         foreach (var enemy in enemies)
@@ -25,8 +32,29 @@ public class BattleManager : MonoBehaviour
             enemy.ResetForBattle();
         }
 
+        BindEnemyStatusViews();
+
         deckManager.InitializeDeck(deckManager.StarterDeck);
         turnManager.BeginBattle(deckManager);
+
+        handView?.Initialize(deckManager, this, GetDefaultTarget());
+    }
+
+    public void OnPlayerUseCard(CardInstance card, CharacterCombatant target)
+    {
+        if (turnManager.CurrentPhase != BattlePhase.PlayerTurn)
+        {
+            return;
+        }
+
+        var chosenTarget = target != null ? target : GetDefaultTarget();
+        if (chosenTarget == null)
+        {
+            Debug.LogWarning("No valid target to play the card on.");
+            return;
+        }
+
+        PlayCard(card, chosenTarget);
     }
 
     public void PlayCard(CardInstance card, CharacterCombatant target)
@@ -76,5 +104,24 @@ public class BattleManager : MonoBehaviour
                     break;
             }
         }
+    }
+
+    private void BindEnemyStatusViews()
+    {
+        int count = Mathf.Min(enemyStatusViews.Count, enemies.Count);
+        for (int i = 0; i < count; i++)
+        {
+            enemyStatusViews[i].Bind(enemies[i]);
+        }
+    }
+
+    private CharacterCombatant GetDefaultTarget()
+    {
+        if (targetOverride != null)
+        {
+            return targetOverride;
+        }
+
+        return enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
     }
 }
